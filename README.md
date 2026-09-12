@@ -42,6 +42,28 @@ cd frontend && npm install && npm run dev
 
 前端开发服务器通过 Vite 代理将 `/api` 转发到 `http://localhost:19506`。
 
+## 测试
+
+纯单元测试无需外部依赖：
+
+```bash
+cd backend && go test ./...
+```
+
+团体报名模块的集成测试（并发报名不超额、并发取消只放回一次名额等）依赖真实 MySQL/MariaDB（InnoDB 行锁，SQLite 无法等价模拟），运行在**独立测试库 `gbevent_test`** 中，每次运行自动重建表，可重复执行且不影响业务数据。准备一次测试库：
+
+```sql
+CREATE DATABASE gbevent_test DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON gbevent_test.* TO 'gbevent_user'@'%';
+```
+
+然后：
+
+```bash
+cd backend && go test ./internal/service/ -run 'TestGroup' -v
+# 也可用 GBEVENT_TEST_DSN 覆盖连接串；数据库不可用时集成用例自动跳过（其余单测照常）
+```
+
 ## 技术栈
 
 | 层 | 技术 |
