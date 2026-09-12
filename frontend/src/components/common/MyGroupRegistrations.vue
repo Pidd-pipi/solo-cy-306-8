@@ -23,6 +23,10 @@
               <el-tag size="small" :type="memberTag(row.status)">{{ RegistrationStatusText[row.status] || row.status }}</el-tag>
             </template>
           </el-table-column>
+          <template #empty>
+            <span v-if="gv.group.status === 'cancelled'" class="removed-hint">该团体已取消，成员报名记录已移除</span>
+            <span v-else>暂无成员</span>
+          </template>
         </el-table>
         <div class="actions">
           <el-button

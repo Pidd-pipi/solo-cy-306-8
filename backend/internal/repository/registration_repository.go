@@ -158,6 +158,16 @@ func (r *RegistrationRepository) ListByGroupIDTx(tx *gorm.DB, groupID uint64) ([
 	return list, nil
 }
 
+// DeleteByGroupIDTx 在事务内物理删除某团体的全部成员报名行（整团取消时使用，
+// 使这些记录从“我的报名/组织者名单/导出”中消失；团体记录本身保留为已取消）。
+func (r *RegistrationRepository) DeleteByGroupIDTx(tx *gorm.DB, groupID uint64) (int64, error) {
+	res := tx.Where("group_id = ?", groupID).Delete(&model.Registration{})
+	if res.Error != nil {
+		return 0, fmt.Errorf("delete registrations by group: %w", res.Error)
+	}
+	return res.RowsAffected, nil
+}
+
 // ListByGroupIDs 按团体 ID 批量查询成员报名。
 func (r *RegistrationRepository) ListByGroupIDs(groupIDs []uint64) (map[uint64][]model.Registration, error) {
 	out := make(map[uint64][]model.Registration, len(groupIDs))

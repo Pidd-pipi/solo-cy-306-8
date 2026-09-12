@@ -29,5 +29,17 @@ func migrateLegacySchema(db *gorm.DB, logger *slog.Logger) error {
 	if err := db.AutoMigrate(&model.Registration{}); err != nil {
 		return err
 	}
+	// 一次性清理：旧版本整团取消只把成员报名行置为 cancelled，导致这些人仍出现在
+	// “我的报名/组织者名单/导出”中。新逻辑取消时会物理删除成员行（团体记录保留），
+	// 这里把历史遗留的已取消团体成员行删除；幂等，正常单人取消（group_id=0）不受影响。
+	res := db.Where("group_id > 0 AND group_id IN (?)",
+		db.Table(model.RegistrationGroup{}.TableName()).Select("id").Where("status = ?", "cancelled"),
+	).Delete(&model.Registration{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		logger.Info("legacy cancelled group members removed", "rows", res.RowsAffected)
+	}
 	return nil
 }

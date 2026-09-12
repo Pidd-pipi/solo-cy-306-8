@@ -158,6 +158,8 @@ func (s *RegistrationGroupService) uniqueVoucher(tx *gorm.DB, batch map[string]s
 }
 
 // Cancel 整团取消：仅团体提交人或管理员可操作；团内任一人已签到则拒绝整团取消。
+// 取消时物理删除团内成员报名行（从“我的报名/组织者名单/导出”中消失），
+// 团体记录本身保留为 cancelled 作为凭证；并发取消由团体行锁串行化，名额只放回一次。
 func (s *RegistrationGroupService) Cancel(id, operatorID uint64, operatorRole string) (*GroupView, error) {
 	view := &GroupView{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -168,6 +170,7 @@ func (s *RegistrationGroupService) Cancel(id, operatorID uint64, operatorRole st
 		if operatorRole != constants.RoleAdmin && group.UserID != operatorID {
 			return util.NewAppError(constants.CodeForbidden, "RegistrationGroup[id="+itoa(id)+"] cancel forbidden: not owner")
 		}
+		// 已取消的团体重复取消直接冲突（团体行已加锁，保证并发取消只有一个事务能走到删除）。
 		if group.Status != constants.GroupStatusRegistered {
 			return util.NewAppError(constants.CodeGroupCancelConflict, constants.MsgCancelConflict)
 		}
@@ -183,11 +186,15 @@ func (s *RegistrationGroupService) Cancel(id, operatorID uint64, operatorRole st
 				return util.NewAppError(constants.CodeGroupCancelConflict, constants.MsgGroupCancelConflict)
 			}
 		}
-		for i := range members {
-			members[i].Status = constants.RegistrationStatusCancelled
-			if err := s.regRepo.UpdateTx(tx, &members[i]); err != nil {
-				return util.Wrap(err, "Registration[id=%d] group cancel save failed", members[i].ID)
-			}
+		// 删除成员行前保留快照用于响应；删除行数必须等于成员数，避免异常情况下状态不一致。
+		view.Members = members
+		deleted, err := s.regRepo.DeleteByGroupIDTx(tx, id)
+		if err != nil {
+			return util.Wrap(err, "RegistrationGroup[id=%d] members delete failed", id)
+		}
+		if deleted != int64(len(members)) {
+			return util.NewAppError(constants.CodeInternalError,
+				"RegistrationGroup[id="+itoa(id)+"] member delete count mismatch")
 		}
 		group.Status = constants.GroupStatusCancelled
 		if err := s.groupRepo.UpdateTx(tx, group); err != nil {
@@ -198,7 +205,6 @@ func (s *RegistrationGroupService) Cancel(id, operatorID uint64, operatorRole st
 			return err
 		}
 		view.Group = group
-		view.Members = members
 		return nil
 	})
 	if err != nil {
@@ -237,7 +243,12 @@ func (s *RegistrationGroupService) ListMine(userID uint64, page, pageSize int) (
 	views := make([]GroupView, 0, len(groups))
 	for i := range groups {
 		g := groups[i]
-		views = append(views, GroupView{Group: &g, Members: memberMap[g.ID]})
+		// 已取消团体的成员报名行已被物理删除，此时返回空数组而非 nil（JSON 序列化为 [] 而非 null）。
+		members := memberMap[g.ID]
+		if members == nil {
+			members = []model.Registration{}
+		}
+		views = append(views, GroupView{Group: &g, Members: members})
 	}
 	return views, total, nil
 }
@@ -248,7 +259,11 @@ func (s *RegistrationGroupService) loadView(group *model.RegistrationGroup) (*Gr
 	if err != nil {
 		return nil, err
 	}
-	return &GroupView{Group: group, Members: memberMap[group.ID]}, nil
+	members := memberMap[group.ID]
+	if members == nil {
+		members = []model.Registration{}
+	}
+	return &GroupView{Group: group, Members: members}, nil
 }
 
 // validateMembers 校验参加人列表：至少 2 人，姓名/手机号必填且团内手机号不重复。
