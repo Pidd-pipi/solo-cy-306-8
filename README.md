@@ -147,13 +147,17 @@ cy-306/
 | POST | /api/v1/activities/:id/publish | 发布活动 |
 | POST | /api/v1/activities/:id/end | 结束活动 |
 | DELETE | /api/v1/activities/:id | 删除活动 |
-| POST | /api/v1/registrations | 在线报名 |
+| POST | /api/v1/registrations | 在线报名（单人） |
 | GET | /api/v1/registrations | 报名列表（组织者/管理员） |
 | GET | /api/v1/registrations/mine | 我的报名 |
 | GET | /api/v1/registrations/export | 导出报名 CSV |
 | POST | /api/v1/registrations/offline | 线下补录报名 |
 | POST | /api/v1/registrations/:id/cancel | 取消报名 |
 | POST | /api/v1/registrations/:id/review | 审核报名 |
+| POST | /api/v1/registration-groups | 团体报名（一次提交 2~单团上限名参加人） |
+| GET | /api/v1/registration-groups/mine | 我的团体报名 |
+| GET | /api/v1/registration-groups/:id | 团体报名详情（含每人凭证号） |
+| POST | /api/v1/registration-groups/:id/cancel | 整团取消 |
 | POST | /api/v1/check-ins | 凭证/扫码签到 |
 | GET | /api/v1/check-ins | 签到记录 |
 | GET | /api/v1/activities/:id/comments | 活动评论列表 |
@@ -171,6 +175,9 @@ cy-306/
 
 - 活动发布：创建、编辑、发布、结束、下架活动，活动封面图上传。
 - 在线报名：名额校验、报名截止校验、防重复报名、凭证号生成、审核与取消。
+- 团体报名：组织者可开启团体报名并设置单团人数上限（至少 2 人）；报名时一次填写多名参加人（姓名/手机号/备注），
+  每人各生成一个入场凭证号用于现场签到；名额按整团计算，剩余名额不足整团时整团都不能报名；
+  多人并发报名通过活动行锁保证总人数不超过活动名额；支持查看我的团体、整团取消（团内有人已签到则不可取消）。
 - 签到管理：凭证号签到、扫码签到、签到率统计、报名名单导出 CSV。
 - 活动日历：月历视图展示活动分布，日期格子显示活动数量，点击日期展开当天活动。
 - 评论收藏：评分评论、平均分展示、收藏与取消收藏。

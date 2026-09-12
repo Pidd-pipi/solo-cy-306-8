@@ -36,6 +36,23 @@ func IsValidRegistrationStatus(s string) bool {
 	return false
 }
 
+// GroupStatus 团体报名状态枚举（与团内成员报名状态同步流转）。
+const (
+	GroupStatusRegistered = "registered"
+	GroupStatusCancelled  = "cancelled"
+)
+
+// GroupMinSize 团体报名最少人数；GroupMaxSizeLimit 单团人数上限的取值边界。
+const (
+	GroupMinSize      = 2
+	GroupMaxSizeLimit = 100
+)
+
+// IsValidGroupStatus 校验团体报名状态。
+func IsValidGroupStatus(s string) bool {
+	return s == GroupStatusRegistered || s == GroupStatusCancelled
+}
+
 // IsValidReviewStatus 校验审核状态。
 func IsValidReviewStatus(s string) bool {
 	for _, v := range ReviewStatusValues {

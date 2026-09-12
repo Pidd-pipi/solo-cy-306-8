@@ -18,33 +18,36 @@ type Router struct {
 	logger  *slog.Logger
 	limiter *middleware.RateLimiter
 
-	user         *handler.UserHandler
-	activity     *handler.ActivityHandler
-	registration *handler.RegistrationHandler
-	checkIn      *handler.CheckInRecordHandler
-	comment      *handler.CommentHandler
-	favorite     *handler.FavoriteHandler
-	notification *handler.NotificationHandler
-	upload       *handler.UploadHandler
+	user              *handler.UserHandler
+	activity          *handler.ActivityHandler
+	registration      *handler.RegistrationHandler
+	registrationGroup *handler.RegistrationGroupHandler
+	checkIn           *handler.CheckInRecordHandler
+	comment           *handler.CommentHandler
+	favorite          *handler.FavoriteHandler
+	notification      *handler.NotificationHandler
+	upload            *handler.UploadHandler
 }
 
 // New 构造路由装配器。
 func New(cfg *config.Config, db *gorm.DB, logger *slog.Logger,
 	user *handler.UserHandler, activity *handler.ActivityHandler,
-	registration *handler.RegistrationHandler, checkIn *handler.CheckInRecordHandler,
+	registration *handler.RegistrationHandler, registrationGroup *handler.RegistrationGroupHandler,
+	checkIn *handler.CheckInRecordHandler,
 	comment *handler.CommentHandler, favorite *handler.FavoriteHandler,
 	notification *handler.NotificationHandler, upload *handler.UploadHandler) *Router {
 	return &Router{
 		cfg: cfg, db: db, logger: logger,
-		limiter:      middleware.NewRateLimiter(cfg.RateLimitPerMinute),
-		user:         user,
-		activity:     activity,
-		registration: registration,
-		checkIn:      checkIn,
-		comment:      comment,
-		favorite:     favorite,
-		notification: notification,
-		upload:       upload,
+		limiter:           middleware.NewRateLimiter(cfg.RateLimitPerMinute),
+		user:              user,
+		activity:          activity,
+		registration:      registration,
+		registrationGroup: registrationGroup,
+		checkIn:           checkIn,
+		comment:           comment,
+		favorite:          favorite,
+		notification:      notification,
+		upload:            upload,
 	}
 }
 
@@ -70,6 +73,7 @@ func (r *Router) Setup() *gin.Engine {
 	r.registerUserRoutes(v1)
 	r.registerActivityRoutes(v1)
 	r.registerRegistrationRoutes(v1)
+	r.registerRegistrationGroupRoutes(v1)
 	r.registerCheckInRoutes(v1)
 	r.registerCommentRoutes(v1)
 	r.registerFavoriteRoutes(v1)

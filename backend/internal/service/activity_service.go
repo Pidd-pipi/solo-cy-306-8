@@ -31,7 +31,8 @@ func NewActivityService(repo *repository.ActivityRepository, regRepo *repository
 
 // Create 创建活动。
 func (s *ActivityService) Create(organizerID uint64, title, description, coverImage, activityType, location string,
-	startTime, endTime, signupDeadline time.Time, capacity int, status string) (*model.Activity, error) {
+	startTime, endTime, signupDeadline time.Time, capacity int, status string,
+	groupSignupEnabled bool, groupMaxSize int) (*model.Activity, error) {
 	if !constants.IsValidActivityType(activityType) {
 		return nil, util.NewAppError(constants.CodeValidationFailed, "Activity[activity_type="+activityType+"] create: invalid type")
 	}
@@ -41,18 +42,23 @@ func (s *ActivityService) Create(organizerID uint64, title, description, coverIm
 	if !constants.IsValidActivityStatus(status) {
 		return nil, util.NewAppError(constants.CodeValidationFailed, "Activity[status="+status+"] create: invalid status")
 	}
+	if err := validateGroupSettings(groupSignupEnabled, groupMaxSize, capacity); err != nil {
+		return nil, err
+	}
 	a := &model.Activity{
-		Title:          title,
-		Description:    description,
-		CoverImage:     coverImage,
-		ActivityType:   activityType,
-		StartTime:      startTime,
-		EndTime:        endTime,
-		Location:       location,
-		Capacity:       capacity,
-		SignupDeadline: signupDeadline,
-		Status:         status,
-		OrganizerID:    organizerID,
+		Title:              title,
+		Description:        description,
+		CoverImage:         coverImage,
+		ActivityType:       activityType,
+		StartTime:          startTime,
+		EndTime:            endTime,
+		Location:           location,
+		Capacity:           capacity,
+		SignupDeadline:     signupDeadline,
+		Status:             status,
+		OrganizerID:        organizerID,
+		GroupSignupEnabled: groupSignupEnabled,
+		GroupMaxSize:       groupMaxSize,
 	}
 	if err := s.repo.Create(a); err != nil {
 		s.logger.Error(constants.LogActivityCreateFailed, "error", err)
@@ -91,6 +97,15 @@ func (s *ActivityService) Update(id, operatorID uint64, operatorRole string, fie
 	}
 	if v, ok := fields["capacity"].(int); ok {
 		a.Capacity = v
+	}
+	if v, ok := fields["group_signup_enabled"].(bool); ok {
+		a.GroupSignupEnabled = v
+	}
+	if v, ok := fields["group_max_size"].(int); ok {
+		a.GroupMaxSize = v
+	}
+	if err := validateGroupSettings(a.GroupSignupEnabled, a.GroupMaxSize, a.Capacity); err != nil {
+		return nil, err
 	}
 	if err := s.repo.Update(a); err != nil {
 		return nil, util.Wrap(err, "Activity[id=%d] update save failed", id)
@@ -224,29 +239,45 @@ func (s *ActivityService) Stats(activityID, operatorID uint64, operatorRole stri
 	}, nil
 }
 
-// CheckRegistrationLimit 校验报名名额与截止时间（供 RegistrationService 使用）。
+// CheckRegistrationLimit 校验报名名额与截止时间（单人报名，占 1 个名额）。
 func (s *ActivityService) CheckRegistrationLimit(activityID uint64) error {
-	a, err := s.repo.FindByID(activityID)
-	if err != nil {
-		return util.Wrap(err, "Activity[id=%d] check limit failed", activityID)
-	}
-	return s.checkRegistrationLimit(a, func(activityID uint64) (int64, error) {
-		return s.repo.CountRegistered(activityID)
-	})
+	return s.CheckSeatsLimit(activityID, 1)
 }
 
-// CheckRegistrationLimitTx 在事务内校验报名名额与截止时间。
+// CheckRegistrationLimitTx 在事务内校验报名名额与截止时间（单人报名，占 1 个名额）。
 func (s *ActivityService) CheckRegistrationLimitTx(tx *gorm.DB, activityID uint64) error {
+	return s.CheckSeatsLimitTx(tx, activityID, 1)
+}
+
+// FindByIDForUpdateTx 在事务内锁定活动行（团体报名校验活动配置时使用）。
+func (s *ActivityService) FindByIDForUpdateTx(tx *gorm.DB, activityID uint64) (*model.Activity, error) {
+	return s.repo.FindByIDForUpdate(tx, activityID)
+}
+
+// CheckSeatsLimitTx 在事务内按“整团占座”校验：活动状态、报名截止、剩余名额能否容纳整团。
+// 名额按整团计算，剩余名额不足整团时直接失败，不允许只报一部分。
+func (s *ActivityService) CheckSeatsLimitTx(tx *gorm.DB, activityID uint64, seats int) error {
 	a, err := s.repo.FindByIDForUpdate(tx, activityID)
 	if err != nil {
 		return util.Wrap(err, "Activity[id=%d] check limit failed", activityID)
 	}
-	return s.checkRegistrationLimit(a, func(activityID uint64) (int64, error) {
+	return s.checkRegistrationLimit(a, seats, func(activityID uint64) (int64, error) {
 		return s.repo.CountRegisteredTx(tx, activityID)
 	})
 }
 
-func (s *ActivityService) checkRegistrationLimit(a *model.Activity, countFn func(uint64) (int64, error)) error {
+// CheckSeatsLimit 非事务版本（线下补录等场景）。
+func (s *ActivityService) CheckSeatsLimit(activityID uint64, seats int) error {
+	a, err := s.repo.FindByID(activityID)
+	if err != nil {
+		return util.Wrap(err, "Activity[id=%d] check limit failed", activityID)
+	}
+	return s.checkRegistrationLimit(a, seats, func(activityID uint64) (int64, error) {
+		return s.repo.CountRegistered(activityID)
+	})
+}
+
+func (s *ActivityService) checkRegistrationLimit(a *model.Activity, seats int, countFn func(uint64) (int64, error)) error {
 	if a.Status == constants.ActivityStatusEnded {
 		return util.NewAppError(constants.CodeActivityEnded, constants.MsgActivityEnded)
 	}
@@ -260,8 +291,31 @@ func (s *ActivityService) checkRegistrationLimit(a *model.Activity, countFn func
 	if err != nil {
 		return err
 	}
-	if a.Capacity > 0 && count >= int64(a.Capacity) {
+	if a.Capacity > 0 && count+int64(seats) > int64(a.Capacity) {
+		if seats > 1 {
+			return util.NewAppError(constants.CodeGroupFull, constants.MsgGroupNotEnoughQuota)
+		}
 		return util.NewAppError(constants.CodeActivityFull, constants.MsgActivityFull)
+	}
+	return nil
+}
+
+// validateGroupSettings 校验团体报名开关与单团人数上限：
+// 关闭时上限必须为 0；开启时上限至少为团体最少人数，且不能超过活动名额。
+func validateGroupSettings(enabled bool, maxSize, capacity int) error {
+	if !enabled {
+		return nil
+	}
+	if maxSize < constants.GroupMinSize {
+		return util.NewAppError(constants.CodeValidationFailed,
+			"group_max_size must be >= "+itoa(uint64(constants.GroupMinSize))+" when group signup enabled")
+	}
+	if maxSize > constants.GroupMaxSizeLimit {
+		return util.NewAppError(constants.CodeValidationFailed,
+			"group_max_size must be <= "+itoa(uint64(constants.GroupMaxSizeLimit)))
+	}
+	if capacity > 0 && maxSize > capacity {
+		return util.NewAppError(constants.CodeValidationFailed, "group_max_size cannot exceed activity capacity")
 	}
 	return nil
 }

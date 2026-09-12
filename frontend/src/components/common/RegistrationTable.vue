@@ -2,6 +2,12 @@
   <div>
     <el-table :data="list" v-loading="loading" border>
       <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column label="团体" width="80">
+        <template #default="{ row }">
+          <el-tag v-if="row.group_id > 0" size="small" type="warning">团 {{ row.group_id }}</el-tag>
+          <span v-else class="single">个人</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="name" label="姓名" width="110" />
       <el-table-column prop="phone" label="手机号" width="130" />
       <el-table-column prop="voucher_no" label="凭证号" width="170" />
@@ -74,4 +80,5 @@ async function review(row: Registration, status: string) {
 
 <style scoped>
 .mt-2 { margin-top: 12px; }
+.single { color: #c0c4cc; font-size: 12px; }
 </style>

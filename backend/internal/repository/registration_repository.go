@@ -33,6 +33,17 @@ func (r *RegistrationRepository) CreateTx(tx *gorm.DB, reg *model.Registration) 
 	return nil
 }
 
+// CreateBatchTx 在事务内批量创建报名（团体报名每个参加人一行）。
+func (r *RegistrationRepository) CreateBatchTx(tx *gorm.DB, regs []*model.Registration) error {
+	if len(regs) == 0 {
+		return nil
+	}
+	if err := tx.Create(regs).Error; err != nil {
+		return fmt.Errorf("create registrations batch: %w", err)
+	}
+	return nil
+}
+
 // FindByID 按 ID 查询报名。
 func (r *RegistrationRepository) FindByID(id uint64) (*model.Registration, error) {
 	return r.findByID(r.db, id, false)
@@ -135,6 +146,32 @@ func (r *RegistrationRepository) ListByActivity(activityID uint64) ([]model.Regi
 		return nil, fmt.Errorf("list registrations by activity: %w", err)
 	}
 	return list, nil
+}
+
+// ListByGroupIDTx 在事务内查询某团体下的全部成员报名（行锁，供取消等场景使用）。
+func (r *RegistrationRepository) ListByGroupIDTx(tx *gorm.DB, groupID uint64) ([]model.Registration, error) {
+	var list []model.Registration
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("group_id = ?", groupID).Order("id ASC").Find(&list).Error; err != nil {
+		return nil, fmt.Errorf("list registrations by group: %w", err)
+	}
+	return list, nil
+}
+
+// ListByGroupIDs 按团体 ID 批量查询成员报名。
+func (r *RegistrationRepository) ListByGroupIDs(groupIDs []uint64) (map[uint64][]model.Registration, error) {
+	out := make(map[uint64][]model.Registration, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return out, nil
+	}
+	var list []model.Registration
+	if err := r.db.Where("group_id IN ?", groupIDs).Order("id ASC").Find(&list).Error; err != nil {
+		return nil, fmt.Errorf("list registrations by group ids: %w", err)
+	}
+	for i := range list {
+		out[list[i].GroupID] = append(out[list[i].GroupID], list[i])
+	}
+	return out, nil
 }
 
 // Update 更新报名。

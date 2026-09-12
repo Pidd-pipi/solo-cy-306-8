@@ -5,17 +5,28 @@
       <div class="meta">
         <el-tag>{{ ActivityTypeText[activity.activity_type] }}</el-tag>
         <el-tag :type="activity.status === 'published' ? 'success' : 'info'">{{ ActivityStatusText[activity.status] }}</el-tag>
+        <el-tag v-if="activity.group_signup_enabled" type="warning">团体报名 · 每团 2~{{ activity.group_max_size }} 人</el-tag>
         <span>时间：{{ formatDateTime(activity.start_time) }} ~ {{ formatDateTime(activity.end_time) }}</span>
         <span>地点：{{ activity.location }}</span>
-        <span>名额：{{ registeredCount }}/{{ activity.capacity }}</span>
+        <span>名额：{{ registeredCount }}/{{ activity.capacity > 0 ? activity.capacity : '不限' }}</span>
+        <span v-if="activity.group_signup_enabled" class="remaining">
+          剩余{{ activity.capacity > 0 ? activity.capacity - registeredCount : '充足' }}，不足整团时无法报名
+        </span>
       </div>
       <el-divider />
       <p class="desc">{{ activity.description }}</p>
 
       <el-tabs>
-        <el-tab-pane label="在线报名">
+        <el-tab-pane :label="activity.group_signup_enabled ? '团体报名' : '在线报名'">
           <template v-if="auth.isLoggedIn">
-            <SignupForm v-if="canSignup" :activity-id="activity.id" @success="onSignup" />
+            <SignupForm v-if="canSignup && !activity.group_signup_enabled" :activity-id="activity.id" @success="onSignup" />
+            <GroupSignupForm
+              v-else-if="canSignup && activity.group_signup_enabled"
+              :activity-id="activity.id"
+              :group-max-size="activity.group_max_size"
+              :remaining="activity.capacity > 0 ? activity.capacity - registeredCount : 0"
+              @success="onGroupSignup"
+            />
             <el-alert v-else title="该活动当前不可报名" type="info" :closable="false" />
           </template>
           <el-alert v-else title="请先登录后报名" type="warning" :closable="false" />
@@ -46,6 +57,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import SignupForm from '@/components/common/SignupForm.vue'
+import GroupSignupForm from '@/components/common/GroupSignupForm.vue'
 import CommentList from '@/components/common/CommentList.vue'
 import { useActivityStore } from '@/stores/activityStore'
 import { useCommentStore } from '@/stores/commentStore'
@@ -108,6 +120,11 @@ async function toggleFavorite() {
 
 function onSignup() {
   ElMessage.success('报名成功，可在个人中心查看')
+}
+
+function onGroupSignup() {
+  ElMessage.success('团体报名成功，每名参加人的凭证号可在个人中心-我的团体报名查看')
+  load()
 }
 
 onMounted(load)

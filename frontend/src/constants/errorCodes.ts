@@ -11,6 +11,9 @@ export const ErrorCode = {
   ACTIVITY_FULL: 40901,
   DUPLICATE_SIGNUP: 40903,
   ALREADY_CHECKED_IN: 40904,
+  GROUP_INVALID: 42201,
+  GROUP_FULL: 40907,
+  GROUP_CANCEL_CONFLICT: 40908,
 } as const
 
 export const ErrorMessage: Record<number, string> = {
@@ -21,4 +24,7 @@ export const ErrorMessage: Record<number, string> = {
   [ErrorCode.ACTIVITY_FULL]: '活动名额已满',
   [ErrorCode.DUPLICATE_SIGNUP]: '您已报名过该活动',
   [ErrorCode.ALREADY_CHECKED_IN]: '该报名已签到',
+  [ErrorCode.GROUP_INVALID]: '团体报名参数不合法',
+  [ErrorCode.GROUP_FULL]: '剩余名额不足，整团无法报名',
+  [ErrorCode.GROUP_CANCEL_CONFLICT]: '团体当前状态不允许取消',
 }

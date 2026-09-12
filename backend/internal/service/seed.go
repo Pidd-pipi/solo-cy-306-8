@@ -47,7 +47,7 @@ func (s *SeedService) Seed() error {
 	activities := []model.Activity{
 		{Title: "Go 语言企业级开发实战讲座", Description: "深入讲解 Go 1.22 + Gin + GORM 的企业级工程实践。", ActivityType: constants.ActivityTypeLecture, StartTime: now.AddDate(0, 0, 7), EndTime: now.AddDate(0, 0, 7), Location: "线上直播", Capacity: 200, SignupDeadline: now.AddDate(0, 0, 6), Status: constants.ActivityStatusPublished, OrganizerID: 2},
 		{Title: "新员工安全培训", Description: "面向新入职员工的安全意识与应急处理培训。", ActivityType: constants.ActivityTypeTraining, StartTime: now.AddDate(0, 0, 14), EndTime: now.AddDate(0, 0, 14), Location: "A 座 3 楼培训室", Capacity: 50, SignupDeadline: now.AddDate(0, 0, 13), Status: constants.ActivityStatusPublished, OrganizerID: 2},
-		{Title: "秋季团队趣味运动会", Description: "团队协作趣味运动会，包含拔河、接力、跳绳等项目。", ActivityType: constants.ActivityTypeParty, StartTime: now.AddDate(0, 0, 30), EndTime: now.AddDate(0, 0, 30), Location: "城市体育公园", Capacity: 120, SignupDeadline: now.AddDate(0, 0, 28), Status: constants.ActivityStatusPublished, OrganizerID: 2},
+		{Title: "秋季团队趣味运动会", Description: "团队协作趣味运动会，包含拔河、接力、跳绳等项目，支持 3~6 人团体报名。", ActivityType: constants.ActivityTypeParty, StartTime: now.AddDate(0, 0, 30), EndTime: now.AddDate(0, 0, 30), Location: "城市体育公园", Capacity: 120, SignupDeadline: now.AddDate(0, 0, 28), Status: constants.ActivityStatusPublished, OrganizerID: 2, GroupSignupEnabled: true, GroupMaxSize: 6},
 		{Title: "黑客松编程竞赛（草稿）", Description: "24 小时黑客松编程竞赛，暂未发布。", ActivityType: constants.ActivityTypeCompetition, StartTime: now.AddDate(0, 0, 60), EndTime: now.AddDate(0, 0, 62), Location: "创新中心", Capacity: 80, SignupDeadline: now.AddDate(0, 0, 55), Status: constants.ActivityStatusDraft, OrganizerID: 2},
 	}
 	for i := range activities {
@@ -58,10 +58,24 @@ func (s *SeedService) Seed() error {
 	regs := []model.Registration{
 		{ActivityID: 1, UserID: 3, Name: "张三", Phone: "13900000001", VoucherNo: "GB20260816000001", Status: constants.RegistrationStatusRegistered, ReviewStatus: constants.ReviewStatusApproved},
 		{ActivityID: 2, UserID: 3, Name: "张三", Phone: "13900000001", VoucherNo: "GB20260816000002", Status: constants.RegistrationStatusCheckedIn, ReviewStatus: constants.ReviewStatusApproved},
-		{ActivityID: 3, UserID: 3, Name: "张三", Phone: "13900000001", VoucherNo: "GB20260816000003", Status: constants.RegistrationStatusRegistered, ReviewStatus: constants.ReviewStatusPending},
 	}
 	for i := range regs {
 		if err := s.db.Create(&regs[i]).Error; err != nil {
+			return err
+		}
+	}
+	// 活动 3 开启了团体报名：预置一个 3 人团体（每人各有凭证号）。
+	group := model.RegistrationGroup{ActivityID: 3, UserID: 3, MemberCount: 3, Status: constants.GroupStatusRegistered}
+	if err := s.db.Create(&group).Error; err != nil {
+		return err
+	}
+	groupRegs := []model.Registration{
+		{ActivityID: 3, UserID: 3, GroupID: group.ID, Name: "张三", Phone: "13900000001", VoucherNo: "GB20260816000003", Status: constants.RegistrationStatusRegistered, ReviewStatus: constants.ReviewStatusPending},
+		{ActivityID: 3, UserID: 3, GroupID: group.ID, Name: "李四", Phone: "13900000002", Remark: "接力赛", VoucherNo: "GB20260816000004", Status: constants.RegistrationStatusRegistered, ReviewStatus: constants.ReviewStatusPending},
+		{ActivityID: 3, UserID: 3, GroupID: group.ID, Name: "王五", Phone: "13900000003", VoucherNo: "GB20260816000005", Status: constants.RegistrationStatusRegistered, ReviewStatus: constants.ReviewStatusPending},
+	}
+	for i := range groupRegs {
+		if err := s.db.Create(&groupRegs[i]).Error; err != nil {
 			return err
 		}
 	}

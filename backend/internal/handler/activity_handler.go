@@ -76,7 +76,8 @@ func (h *ActivityHandler) Create(c *gin.Context) {
 		return
 	}
 	a, err := h.svc.Create(middleware.GetUserID(c), req.Title, req.Description, req.CoverImage,
-		req.ActivityType, req.Location, req.StartTime, req.EndTime, req.SignupDeadline, req.Capacity, req.Status)
+		req.ActivityType, req.Location, req.StartTime, req.EndTime, req.SignupDeadline, req.Capacity, req.Status,
+		req.GroupSignupEnabled, req.GroupMaxSize)
 	if err != nil {
 		h.wrapError(c, err, "Activity create failed")
 		return
@@ -100,6 +101,12 @@ func (h *ActivityHandler) Update(c *gin.Context) {
 		"activity_type": req.ActivityType, "location": req.Location}
 	if req.Capacity != nil {
 		fields["capacity"] = *req.Capacity
+	}
+	if req.GroupSignupEnabled != nil {
+		fields["group_signup_enabled"] = *req.GroupSignupEnabled
+	}
+	if req.GroupMaxSize != nil {
+		fields["group_max_size"] = *req.GroupMaxSize
 	}
 	a, err := h.svc.Update(id, middleware.GetUserID(c), middleware.GetUserRole(c), fields)
 	if err != nil {

@@ -32,10 +32,14 @@ func main() {
 		os.Exit(1)
 	}
 	if err := db.AutoMigrate(
-		&model.User{}, &model.Activity{}, &model.Registration{}, &model.CheckInRecord{},
+		&model.User{}, &model.Activity{}, &model.Registration{}, &model.RegistrationGroup{}, &model.CheckInRecord{},
 		&model.Comment{}, &model.Favorite{}, &model.Notification{}, &model.AuditLog{},
 	); err != nil {
 		logger.Error("auto migrate failed", "error", err.Error())
+		os.Exit(1)
+	}
+	if err := migrateLegacySchema(db, logger); err != nil {
+		logger.Error("legacy schema migration failed", "error", err.Error())
 		os.Exit(1)
 	}
 	if err := service.NewSeedService(db, logger).Seed(); err != nil {
@@ -46,6 +50,7 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	activityRepo := repository.NewActivityRepository(db)
 	regRepo := repository.NewRegistrationRepository(db)
+	groupRepo := repository.NewRegistrationGroupRepository(db)
 	checkinRepo := repository.NewCheckInRecordRepository(db)
 	commentRepo := repository.NewCommentRepository(db)
 	favoriteRepo := repository.NewFavoriteRepository(db)
@@ -54,6 +59,7 @@ func main() {
 	userSvc := service.NewUserService(userRepo, logger)
 	activitySvc := service.NewActivityService(activityRepo, regRepo, notifyRepo, checkinRepo, logger)
 	regSvc := service.NewRegistrationService(db, regRepo, activitySvc, notifyRepo, logger)
+	groupSvc := service.NewRegistrationGroupService(db, groupRepo, regRepo, activitySvc, logger)
 	checkinSvc := service.NewCheckInRecordService(db, checkinRepo, regRepo, activitySvc, notifyRepo, logger)
 	commentSvc := service.NewCommentService(commentRepo, activitySvc, logger)
 	favoriteSvc := service.NewFavoriteService(favoriteRepo, activitySvc, logger)
@@ -62,13 +68,14 @@ func main() {
 	userHandler := handler.NewUserHandler(userSvc, logger)
 	activityHandler := handler.NewActivityHandler(activitySvc, logger)
 	regHandler := handler.NewRegistrationHandler(regSvc, logger)
+	groupHandler := handler.NewRegistrationGroupHandler(groupSvc, logger)
 	checkinHandler := handler.NewCheckInRecordHandler(checkinSvc, logger)
 	commentHandler := handler.NewCommentHandler(commentSvc, logger)
 	favoriteHandler := handler.NewFavoriteHandler(favoriteSvc, logger)
 	notifyHandler := handler.NewNotificationHandler(notifySvc, logger)
 	uploadHandler := handler.NewUploadHandler(cfg, logger)
 
-	r := router.New(cfg, db, logger, userHandler, activityHandler, regHandler, checkinHandler,
+	r := router.New(cfg, db, logger, userHandler, activityHandler, regHandler, groupHandler, checkinHandler,
 		commentHandler, favoriteHandler, notifyHandler, uploadHandler)
 
 	srv := &http.Server{

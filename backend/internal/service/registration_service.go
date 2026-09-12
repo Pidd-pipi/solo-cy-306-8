@@ -35,6 +35,14 @@ func (s *RegistrationService) Create(activityID, userID uint64, name, phone, rem
 	s.logger.Info(constants.LogRegistrationCreateStart, "activity_id", activityID, "user_id", userID)
 	reg := &model.Registration{}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 团体报名活动不允许走单人报名入口（每团至少 2 人）。
+		act, err := s.activitySvc.FindByIDForUpdateTx(tx, activityID)
+		if err != nil {
+			return err
+		}
+		if act.GroupSignupEnabled {
+			return util.NewAppError(constants.CodeGroupInvalid, constants.MsgGroupSignupOnly)
+		}
 		if err := s.activitySvc.CheckRegistrationLimitTx(tx, activityID); err != nil {
 			return err
 		}
@@ -79,6 +87,10 @@ func (s *RegistrationService) Cancel(id, operatorID uint64, operatorRole string)
 	}
 	if reg.Status != constants.RegistrationStatusRegistered {
 		return nil, util.NewAppError(constants.CodeCancelConflict, constants.MsgCancelConflict)
+	}
+	if reg.GroupID > 0 {
+		return nil, util.NewAppError(constants.CodeGroupCancelConflict,
+			"Registration[id="+itoa(id)+"] belongs to group "+itoa(reg.GroupID)+", cancel the whole group instead")
 	}
 	reg.Status = constants.RegistrationStatusCancelled
 	if err := s.repo.Update(reg); err != nil {
@@ -132,23 +144,36 @@ func (s *RegistrationService) Review(id, operatorID uint64, operatorRole string,
 	return reg, nil
 }
 
-// OfflineCreate 线下补录报名。
+// OfflineCreate 线下补录报名（仅单人；团体报名活动不支持单人补录）。
 func (s *RegistrationService) OfflineCreate(activityID, operatorID uint64, name, phone, remark string) (*model.Registration, error) {
-	if err := s.activitySvc.CheckRegistrationLimit(activityID); err != nil {
+	reg := &model.Registration{}
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		act, err := s.activitySvc.FindByIDForUpdateTx(tx, activityID)
+		if err != nil {
+			return err
+		}
+		if act.GroupSignupEnabled {
+			return util.NewAppError(constants.CodeGroupInvalid, constants.MsgGroupSignupOnly)
+		}
+		if err := s.activitySvc.CheckRegistrationLimitTx(tx, activityID); err != nil {
+			return err
+		}
+		reg.ActivityID = activityID
+		reg.UserID = operatorID
+		reg.Name = name
+		reg.Phone = phone
+		reg.Remark = remark
+		reg.VoucherNo = util.GenerateVoucherNo()
+		reg.Status = constants.RegistrationStatusRegistered
+		reg.ReviewStatus = constants.ReviewStatusApproved
+		if err := s.repo.CreateTx(tx, reg); err != nil {
+			s.logger.Error(constants.LogRegistrationCreateFailed, "error", err)
+			return util.Wrap(err, "Registration[activity_id=%d] offline create failed", activityID)
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
-	}
-	reg := &model.Registration{
-		ActivityID:   activityID,
-		UserID:       operatorID,
-		Name:         name,
-		Phone:        phone,
-		Remark:       remark,
-		VoucherNo:    util.GenerateVoucherNo(),
-		Status:       constants.RegistrationStatusRegistered,
-		ReviewStatus: constants.ReviewStatusApproved,
-	}
-	if err := s.repo.Create(reg); err != nil {
-		return nil, util.Wrap(err, "Registration[activity_id=%d] offline create failed", activityID)
 	}
 	s.logger.Info(constants.LogRegistrationCreateSuccess, "registration_id", reg.ID, "source", "offline")
 	return reg, nil
@@ -184,11 +209,12 @@ func (s *RegistrationService) ExportCSV(activityID, operatorID uint64, operatorR
 	}
 	var buf strings.Builder
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"ID", "活动ID", "报名人", "手机号", "凭证号", "状态", "审核状态", "备注", "报名时间"})
+	_ = w.Write([]string{"ID", "活动ID", "团体ID", "报名人", "手机号", "凭证号", "状态", "审核状态", "备注", "报名时间"})
 	for _, r := range list {
 		_ = w.Write([]string{
 			strconv.FormatUint(r.ID, 10),
 			strconv.FormatUint(r.ActivityID, 10),
+			strconv.FormatUint(r.GroupID, 10),
 			r.Name, r.Phone, r.VoucherNo,
 			util.RegistrationStatusText(r.Status),
 			util.ReviewStatusText(r.ReviewStatus),

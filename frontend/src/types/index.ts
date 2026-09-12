@@ -25,6 +25,8 @@ export interface Activity {
   signup_deadline: string
   status: ActivityStatusType
   organizer_id: number
+  group_signup_enabled: boolean
+  group_max_size: number
   created_at: string
   registered_count?: number
 }
@@ -33,6 +35,7 @@ export interface Registration {
   id: number
   activity_id: number
   user_id: number
+  group_id: number
   name: string
   phone: string
   remark: string
@@ -40,6 +43,26 @@ export interface Registration {
   status: string
   review_status: string
   created_at: string
+}
+
+export interface GroupMemberInput {
+  name: string
+  phone: string
+  remark?: string
+}
+
+export interface RegistrationGroup {
+  id: number
+  activity_id: number
+  user_id: number
+  member_count: number
+  status: string
+  created_at: string
+}
+
+export interface GroupView {
+  group: RegistrationGroup
+  members: Registration[]
 }
 
 export interface CheckInRecord {

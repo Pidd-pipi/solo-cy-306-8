@@ -21,6 +21,9 @@
       <el-tab-pane label="我的报名" name="regs">
         <MyRegistrations />
       </el-tab-pane>
+      <el-tab-pane label="我的团体报名" name="groups">
+        <MyGroupRegistrations />
+      </el-tab-pane>
       <el-tab-pane label="我的收藏" name="favs">
         <FavoriteList />
       </el-tab-pane>
@@ -43,6 +46,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import MyRegistrations from '@/components/common/MyRegistrations.vue'
+import MyGroupRegistrations from '@/components/common/MyGroupRegistrations.vue'
 import FavoriteList from '@/components/common/FavoriteList.vue'
 import NotificationList from '@/components/common/NotificationList.vue'
 import { useAuth } from '@/hooks/useAuth'

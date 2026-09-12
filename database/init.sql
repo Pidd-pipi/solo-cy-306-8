@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS activities (
   signup_deadline DATETIME NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'draft',
   organizer_id BIGINT UNSIGNED NOT NULL,
+  group_signup_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  group_max_size INT NOT NULL DEFAULT 0,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   KEY idx_activities_status (status),
@@ -41,6 +43,7 @@ CREATE TABLE IF NOT EXISTS registrations (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   activity_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
+  group_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
   name VARCHAR(50) NOT NULL,
   phone VARCHAR(20) NOT NULL,
   remark VARCHAR(255) NOT NULL DEFAULT '',
@@ -50,9 +53,24 @@ CREATE TABLE IF NOT EXISTS registrations (
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uk_registrations_voucher (voucher_no),
-  UNIQUE KEY uk_registrations_activity_user (activity_id, user_id),
+  KEY idx_registrations_activity_user (activity_id, user_id),
   KEY idx_registrations_activity (activity_id),
-  KEY idx_registrations_user (user_id)
+  KEY idx_registrations_user (user_id),
+  KEY idx_registrations_group (group_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 团体报名：一次团体报名一条团体记录，成员行保存在 registrations 表并通过 group_id 关联。
+CREATE TABLE IF NOT EXISTS registration_groups (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  activity_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  member_count INT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'registered',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_reg_groups_activity (activity_id),
+  KEY idx_reg_groups_user (user_id),
+  KEY idx_reg_groups_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS check_in_records (
@@ -119,17 +137,22 @@ INSERT INTO users (id, username, password_hash, nickname, avatar, role, email, p
 (2, 'organizer', '$2a$10$TMTpnDbEwRbtcbF9VJxAxe5IswQjmo7pboKI9zVtU.BYnhzdJpX9a', '活动组织者', '', 'organizer', 'org@gbevent.dev', '13800000002', NOW(3)),
 (3, 'user', '$2a$10$TMTpnDbEwRbtcbF9VJxAxe5IswQjmo7pboKI9zVtU.BYnhzdJpX9a', '普通用户', '', 'user', 'user@gbevent.dev', '13800000003', NOW(3));
 
-INSERT INTO activities (id, title, description, cover_image, activity_type, start_time, end_time, location, capacity, signup_deadline, status, organizer_id, created_at) VALUES
-(1, 'Go 语言企业级开发实战讲座', '深入讲解 Go 1.22 + Gin + GORM 的企业级工程实践。', '', 'lecture', DATE_ADD(NOW(), INTERVAL 7 DAY), DATE_ADD(NOW(), INTERVAL 7 DAY), '线上直播', 200, DATE_ADD(NOW(), INTERVAL 6 DAY), 'published', 2, NOW(3)),
-(2, '新员工安全培训', '面向新入职员工的安全意识与应急处理培训。', '', 'training', DATE_ADD(NOW(), INTERVAL 14 DAY), DATE_ADD(NOW(), INTERVAL 14 DAY), 'A 座 3 楼培训室', 50, DATE_ADD(NOW(), INTERVAL 13 DAY), 'published', 2, NOW(3)),
-(3, '秋季团队趣味运动会', '团队协作趣味运动会，包含拔河、接力、跳绳等项目。', '', 'party', DATE_ADD(NOW(), INTERVAL 30 DAY), DATE_ADD(NOW(), INTERVAL 30 DAY), '城市体育公园', 120, DATE_ADD(NOW(), INTERVAL 28 DAY), 'published', 2, NOW(3)),
-(4, '黑客松编程竞赛（草稿）', '24 小时黑客松编程竞赛，暂未发布。', '', 'competition', DATE_ADD(NOW(), INTERVAL 60 DAY), DATE_ADD(NOW(), INTERVAL 62 DAY), '创新中心', 80, DATE_ADD(NOW(), INTERVAL 55 DAY), 'draft', 2, NOW(3)),
-(5, '上季度读书分享会（已结束）', '已结束的读书分享会。', '', 'lecture', DATE_SUB(NOW(), INTERVAL 10 DAY), DATE_SUB(NOW(), INTERVAL 10 DAY), '咖啡厅', 30, DATE_SUB(NOW(), INTERVAL 11 DAY), 'ended', 2, NOW(3));
+INSERT INTO activities (id, title, description, cover_image, activity_type, start_time, end_time, location, capacity, signup_deadline, status, organizer_id, group_signup_enabled, group_max_size, created_at) VALUES
+(1, 'Go 语言企业级开发实战讲座', '深入讲解 Go 1.22 + Gin + GORM 的企业级工程实践。', '', 'lecture', DATE_ADD(NOW(), INTERVAL 7 DAY), DATE_ADD(NOW(), INTERVAL 7 DAY), '线上直播', 200, DATE_ADD(NOW(), INTERVAL 6 DAY), 'published', 2, 0, 0, NOW(3)),
+(2, '新员工安全培训', '面向新入职员工的安全意识与应急处理培训。', '', 'training', DATE_ADD(NOW(), INTERVAL 14 DAY), DATE_ADD(NOW(), INTERVAL 14 DAY), 'A 座 3 楼培训室', 50, DATE_ADD(NOW(), INTERVAL 13 DAY), 'published', 2, 0, 0, NOW(3)),
+(3, '秋季团队趣味运动会', '团队协作趣味运动会，包含拔河、接力、跳绳等项目，支持 3~6 人团体报名。', '', 'party', DATE_ADD(NOW(), INTERVAL 30 DAY), DATE_ADD(NOW(), INTERVAL 30 DAY), '城市体育公园', 120, DATE_ADD(NOW(), INTERVAL 28 DAY), 'published', 2, 1, 6, NOW(3)),
+(4, '黑客松编程竞赛（草稿）', '24 小时黑客松编程竞赛，暂未发布。', '', 'competition', DATE_ADD(NOW(), INTERVAL 60 DAY), DATE_ADD(NOW(), INTERVAL 62 DAY), '创新中心', 80, DATE_ADD(NOW(), INTERVAL 55 DAY), 'draft', 2, 0, 0, NOW(3)),
+(5, '上季度读书分享会（已结束）', '已结束的读书分享会。', '', 'lecture', DATE_SUB(NOW(), INTERVAL 10 DAY), DATE_SUB(NOW(), INTERVAL 10 DAY), '咖啡厅', 30, DATE_SUB(NOW(), INTERVAL 11 DAY), 'ended', 2, 0, 0, NOW(3));
 
-INSERT INTO registrations (id, activity_id, user_id, name, phone, remark, voucher_no, status, review_status, created_at) VALUES
-(1, 1, 3, '张三', '13900000001', '希望了解工程实践', 'GB20260816000001', 'registered', 'approved', NOW(3)),
-(2, 2, 3, '张三', '13900000001', '', 'GB20260816000002', 'checked_in', 'approved', NOW(3)),
-(3, 3, 3, '张三', '13900000001', '', 'GB20260816000003', 'registered', 'pending', NOW(3));
+INSERT INTO registration_groups (id, activity_id, user_id, member_count, status, created_at) VALUES
+(1, 3, 3, 3, 'registered', NOW(3));
+
+INSERT INTO registrations (id, activity_id, user_id, group_id, name, phone, remark, voucher_no, status, review_status, created_at) VALUES
+(1, 1, 3, 0, '张三', '13900000001', '希望了解工程实践', 'GB20260816000001', 'registered', 'approved', NOW(3)),
+(2, 2, 3, 0, '张三', '13900000001', '', 'GB20260816000002', 'checked_in', 'approved', NOW(3)),
+(3, 3, 3, 1, '张三', '13900000001', '', 'GB20260816000003', 'registered', 'pending', NOW(3)),
+(4, 3, 3, 1, '李四', '13900000002', '接力赛', 'GB20260816000004', 'registered', 'pending', NOW(3)),
+(5, 3, 3, 1, '王五', '13900000003', '', 'GB20260816000005', 'registered', 'pending', NOW(3));
 
 INSERT INTO check_in_records (id, registration_id, activity_id, check_in_method, check_in_time, operator_id, created_at) VALUES
 (1, 2, 2, 'voucher', NOW(), 2, NOW(3));
